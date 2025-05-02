@@ -14,13 +14,13 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 自定义模块导入
-from analysis.analyzer import analyze_runs
-from model.torch.llama import create_test_model as create_torch_model
-from model.torch.llama import register_module_info as register_torch_module
-import model.torch.llama as torch_llama
-from model.mindspore.llama import create_test_model as create_ms_model
-from model.mindspore.llama import register_module_info as register_ms_module
-import model.mindspore.llama as ms_llama
+from zwx_ms.analysis.analyzer import analyze_runs
+from zwx_ms.model.torch.llama import create_test_model as create_torch_model
+from zwx_ms.model.torch.llama import register_module_info as register_torch_module
+import zwx_ms.model.torch.llama as torch_llama
+from zwx_ms.model.mindspore.llama import create_test_model as create_ms_model
+from zwx_ms.model.mindspore.llama import register_module_info as register_ms_module
+import zwx_ms.model.mindspore.llama as ms_llama
 
 @dataclass
 class InjectedError:
@@ -413,7 +413,7 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
     # 生成共享权重文件（如果不存在）
     weights_path = os.path.join(weights_dir, "shared_weights.safetensors")
     if not os.path.exists(weights_path):
-        from utils.weight_utils import WeightManager
+        from zwx_ms.utils.weight_utils import WeightManager
         config = torch_llama.get_llama_config(small=True)
         WeightManager.generate_shared_weights(config, weights_path, seed=42)
     

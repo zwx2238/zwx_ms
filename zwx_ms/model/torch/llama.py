@@ -2,12 +2,11 @@ import functools
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import sys
 import os
 
 # 导入基础模块路径
-from mock.mock import BaseOperatorLogger
-from utils.weight_utils import WeightManager
+from zwx_ms.mock.mock import BaseOperatorLogger
+from zwx_ms.utils.weight_utils import WeightManager
 
 class TorchOperatorLogger(BaseOperatorLogger):
     """PyTorch操作日志记录器"""

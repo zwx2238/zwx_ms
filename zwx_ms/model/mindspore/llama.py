@@ -4,13 +4,12 @@ import mindspore.nn as nn
 import mindspore.ops as ops
 from mindspore import Tensor, Parameter
 import mindspore.common.dtype as mstype
-import sys
 import os
 import functools
 
 # 导入基础模块路径
-from mock.mock import BaseOperatorLogger
-from utils.weight_utils import WeightManager
+from zwx_ms.mock.mock import BaseOperatorLogger
+from zwx_ms.utils.weight_utils import WeightManager
 
 class MindSporeOperatorLogger(BaseOperatorLogger):
     """MindSpore操作日志记录器"""
@@ -345,7 +344,7 @@ if __name__ == "__main__":
         print("将使用PyTorch端生成权重文件...")
         
         # 如果权重文件不存在，先使用PyTorch生成
-        from model.torch.llama import get_llama_config as get_torch_config
+        from zwx_ms.model.torch.llama import get_llama_config as get_torch_config
         WeightManager.generate_shared_weights(get_torch_config(small=True), weights_path)
     
     # 创建MindSpore模型并加载权重

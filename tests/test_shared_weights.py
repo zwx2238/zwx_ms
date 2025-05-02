@@ -7,7 +7,7 @@ import json
 # 确保能导入自定义模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils.weight_utils import WeightManager
+from zwx_ms.utils.weight_utils import WeightManager
 
 def get_model_config(small=True):
     """获取模型配置"""
@@ -46,7 +46,7 @@ def test_pytorch_loading(weights_path):
     """测试PyTorch模型加载权重"""
     try:
         import torch
-        from model.torch.llama import create_test_model as create_torch_model
+        from zwx_ms.model.torch.llama import create_test_model as create_torch_model
     except ImportError:
         print("未安装PyTorch或导入错误，跳过PyTorch测试")
         return False
@@ -72,8 +72,8 @@ def test_mindspore_loading(weights_path):
     """测试MindSpore模型加载权重"""
     try:
         import mindspore as ms
-        from model.mindspore.llama import create_test_model as create_ms_model
-        from model.mindspore.llama import load_model_with_weights
+        from zwx_ms.model.mindspore.llama import create_test_model as create_ms_model
+        from zwx_ms.model.mindspore.llama import load_model_with_weights
     except ImportError:
         print("未安装MindSpore或导入错误，跳过MindSpore测试")
         return False
@@ -99,8 +99,8 @@ def check_weights_compatibility(weights_path):
     try:
         import torch
         import mindspore as ms
-        from model.torch.llama import create_test_model as create_torch_model
-        from model.mindspore.llama import create_test_model as create_ms_model
+        from zwx_ms.model.torch.llama import create_test_model as create_torch_model
+        from zwx_ms.model.mindspore.llama import create_test_model as create_ms_model
     except ImportError:
         print("导入错误，无法进行兼容性检查")
         return
@@ -144,8 +144,8 @@ def test_model_outputs(weights_path):
         import torch
         import mindspore as ms
         import numpy as np
-        from model.torch.llama import create_test_model as create_torch_model
-        from model.mindspore.llama import create_test_model as create_ms_model
+        from zwx_ms.model.torch.llama import create_test_model as create_torch_model
+        from zwx_ms.model.mindspore.llama import create_test_model as create_ms_model
     except ImportError:
         print("导入错误，无法进行输出一致性测试")
         return

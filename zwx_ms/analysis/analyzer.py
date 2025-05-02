@@ -455,12 +455,12 @@ class ModelAnalyzer:
         if str(path).endswith('.npy'):
             # 加载numpy格式文件（MindSpore使用）
             import numpy as np
-            print(f"加载MindSpore格式数据: {path}")
+            # print(f"加载MindSpore格式数据: {path}")
             array = np.load(str(path), allow_pickle=True)
             return torch.from_numpy(array).float()
         else:
             # 加载PyTorch格式文件
-            print(f"加载PyTorch格式数据: {path}")
+            # print(f"加载PyTorch格式数据: {path}")
             return torch.load(str(path))
 
     def compare_tensors(self, t1: torch.Tensor, t2: torch.Tensor) -> Tuple[float, float, Tuple[int, ...], float]:
