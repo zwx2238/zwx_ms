@@ -1,8 +1,9 @@
+import functools
+
 import numpy as np
 from mindspore import Tensor, Parameter
 
 from zwx_ms.mock.mock import BaseOperatorLogger
-from zwx_ms.model.mindspore.llama import wrap_construct
 
 
 class MindSporeOperatorLogger(BaseOperatorLogger):
@@ -91,3 +92,23 @@ def register_module_info_ms(module, prefix: str = ''):
         if child is not None:
             full_name = f"{prefix}.{name}" if prefix else name
             register_module_info_ms(child, full_name)
+
+
+def wrap_construct(module):
+    """包装模块的construct方法 - MindSpore版本"""
+    original_construct = module.construct
+
+    @functools.wraps(original_construct)
+    def wrapped_construct(*args, **kwargs):
+        outputs = original_construct(*args, **kwargs)
+        ms_logger.log_operation(module, args, outputs)
+        return outputs
+
+    # 安全地获取模块名称
+    module_name = getattr(module, '_module_name', module.__class__.__name__)
+    # print(f"包装模块: {module_name}")
+
+    module.construct = wrapped_construct
+
+
+ms_logger = MindSporeOperatorLogger()

@@ -5,30 +5,12 @@ import mindspore.ops as ops
 from mindspore import Tensor
 import mindspore.common.dtype as mstype
 import os
-import functools
 
 # 导入基础模块路径
-from zwx_ms.mock.mock_ms import MindSporeOperatorLogger, register_module_info_ms
+from zwx_ms.mock.mock_ms import register_module_info_ms, ms_logger
 from zwx_ms.utils.weight_utils import WeightManager
 
 # 创建全局记录器实例
-ms_logger = MindSporeOperatorLogger()
-
-def wrap_construct(module):
-    """包装模块的construct方法 - MindSpore版本"""
-    original_construct = module.construct
-    
-    @functools.wraps(original_construct)
-    def wrapped_construct(*args, **kwargs):
-        outputs = original_construct(*args, **kwargs)
-        ms_logger.log_operation(module, args, outputs)
-        return outputs
-
-    # 安全地获取模块名称
-    module_name = getattr(module, '_module_name', module.__class__.__name__)
-    # print(f"包装模块: {module_name}")
-    
-    module.construct = wrapped_construct
 
 
 # Llama模型的MindSpore实现

@@ -1,30 +1,13 @@
-import functools
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os
 
 # 导入基础模块路径
-from zwx_ms.mock.mock_torch import TorchOperatorLogger, register_module_info_pt
+from zwx_ms.mock.mock_torch import register_module_info_pt, torch_logger
 from zwx_ms.utils.weight_utils import WeightManager
 
 # 创建全局记录器实例
-torch_logger = TorchOperatorLogger()
-
-def wrap_forward(module: torch.nn.Module):
-    """包装模块的forward方法"""
-    original_forward = module.forward
-    
-    @functools.wraps(original_forward)
-    def wrapped_forward(*args, **kwargs):
-        outputs = original_forward(*args, **kwargs)
-        torch_logger.log_operation(module, args, outputs)
-        return outputs
-
-    # 安全地获取模块名称
-    module_name = module._module_name
-
-    module.forward = wrapped_forward
 
 
 # Llama模型实现

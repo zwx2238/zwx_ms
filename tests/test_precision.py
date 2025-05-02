@@ -13,6 +13,10 @@ import argparse
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import zwx_ms.mock.mock_ms
+import zwx_ms.mock.mock_torch
+
+
 # 自定义模块导入
 from zwx_ms.analysis import analyze_runs
 from zwx_ms.model.torch.llama import create_test_model as create_torch_model
@@ -440,14 +444,14 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
     input_ids = torch.tensor(input_data, dtype=torch.long)
     
     # 清除已有日志
-    torch_llama.torch_logger.clear_logs()
+    zwx_ms.mock.mock_torch.torch_logger.clear_logs()
     
     # 前向传播
     with torch.no_grad():
         outputs = model(input_ids)
     
     # 保存日志
-    torch_llama.torch_logger.dump_logs(torch_save_dir)
+    zwx_ms.mock.mock_torch.torch_logger.dump_logs(torch_save_dir)
     
     # 保存输入和输出
     np.save(os.path.join(save_dir, "torch_input.npy"), input_ids.numpy())
@@ -490,13 +494,13 @@ def run_mindspore_model(save_dir: str, error_injector: Optional = None, input_da
     input_ids = ms.Tensor(input_data, ms.int32)
     
     # 清除已有日志
-    ms_llama.ms_logger.clear_logs()
+    zwx_ms.mock.mock_ms.ms_logger.clear_logs()
     
     # 前向传播
     outputs = model(input_ids)
     
     # 保存日志
-    ms_llama.ms_logger.dump_logs(ms_save_dir)
+    zwx_ms.mock.mock_ms.ms_logger.dump_logs(ms_save_dir)
     
     # 保存输入和输出
     np.save(os.path.join(save_dir, "mindspore_input.npy"), input_ids.asnumpy())

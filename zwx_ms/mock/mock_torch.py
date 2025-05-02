@@ -1,7 +1,8 @@
+import functools
+
 import torch
 
 from zwx_ms.mock.mock import BaseOperatorLogger
-from zwx_ms.model.torch.llama import wrap_forward
 
 
 class TorchOperatorLogger(BaseOperatorLogger):
@@ -72,3 +73,22 @@ def register_module_info_pt(module: torch.nn.Module, prefix: str = ''):
     for name, child in module.named_children():
         full_name = f"{prefix}.{name}" if prefix else name
         register_module_info_pt(child, full_name)
+
+
+def wrap_forward(module: torch.nn.Module):
+    """包装模块的forward方法"""
+    original_forward = module.forward
+
+    @functools.wraps(original_forward)
+    def wrapped_forward(*args, **kwargs):
+        outputs = original_forward(*args, **kwargs)
+        torch_logger.log_operation(module, args, outputs)
+        return outputs
+
+    # 安全地获取模块名称
+    module_name = module._module_name
+
+    module.forward = wrapped_forward
+
+
+torch_logger = TorchOperatorLogger()
