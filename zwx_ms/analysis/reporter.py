@@ -42,12 +42,6 @@ class AnalysisReport:
             ])
 
         headers = ["模块", "类型", "最大绝对差异", "最大相对差异", "最大差异位置", "张量形状", "执行顺序"]
-        table_str = tabulate(table_data, headers=headers, tablefmt="grid")
-
-        # 保存到文件
-        with open(self.output_dir / f"diff_table_{self.timestamp}.txt", "w", encoding="utf-8") as f:
-            f.write(table_str)
-
         # 同时保存为CSV以便后续分析
         df = pd.DataFrame(table_data, columns=headers)
         df.to_csv(self.output_dir / f"diff_data_{self.timestamp}.csv", index=False)
@@ -161,6 +155,7 @@ class AnalysisReport:
         # 保存图片
         plt.savefig(self.output_dir / f"diff_heatmap_{self.timestamp}.png", dpi=300, bbox_inches='tight')
         plt.close()
+        print(f"{self.output_dir}/diff_heatmap_{self.timestamp}.png 保存成功")
 
     def plot_diff_distribution(self, diffs: List[TensorDiff]):
         """绘制差异分布图"""

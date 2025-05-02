@@ -9,6 +9,7 @@ clean:
 # 运行所有测试用例
 test_all: clean
     @echo "运行所有测试用例..."
+    uv run tests/test_shared_weights.py
     uv run tests/test_precision.py
 
 commit message="update":

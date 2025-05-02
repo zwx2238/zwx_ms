@@ -112,3 +112,5 @@ def wrap_construct(module):
 
 
 ms_logger = MindSporeOperatorLogger()
+
+

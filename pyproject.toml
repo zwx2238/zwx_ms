@@ -13,4 +13,5 @@ dependencies = [
     "mindspore>=2.5.0",
     "safetensors>=0.5.3",
     "tokei>=12.1.2",
+    "click>=8.1.8",
 ]

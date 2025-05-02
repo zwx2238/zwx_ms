@@ -1,13 +1,17 @@
 import os
 import sys
-import argparse
+import click
 import numpy as np
 import json
 
 # 确保能导入自定义模块
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from zwx_ms.utils.weight_utils import WeightManager
+from zwx_ms.model.llama_pt import create_test_model as create_torch_model
+from zwx_ms.model.llama_ms import create_test_model as create_ms_model
+from zwx_ms.model.llama_ms import load_model_with_weights
+
 
 def get_model_config(small=True):
     """获取模型配置"""
@@ -193,24 +197,24 @@ def test_model_outputs(weights_path):
         print(f"最大差异位置: {max_idx}")
         print(f"PyTorch值: {torch_val:.6f}, MindSpore值: {ms_val:.6f}")
 
-def main():
-    parser = argparse.ArgumentParser(description="生成并测试PyTorch和MindSpore共享权重")
-    parser.add_argument("--output-dir", type=str, default="weights", help="权重输出目录")
-    parser.add_argument("--small", action="store_true", default=True, help="使用小型模型配置")
-    parser.add_argument("--skip-generate", action="store_true", help="跳过权重生成")
-    parser.add_argument("--check-compatibility", action="store_true", help="检查权重兼容性")
-    parser.add_argument("--test-outputs", action="store_true", help="测试模型输出一致性")
-    args = parser.parse_args()
+@click.command()
+@click.option("--output-dir", type=str, default="weights", help="权重输出目录")
+@click.option("--small/--large", default=True, help="使用小型模型配置")
+@click.option("--skip-generate", is_flag=True, help="跳过权重生成")
+@click.option("--check-compatibility", is_flag=True, help="检查权重兼容性")
+@click.option("--test-outputs", is_flag=True, help="测试模型输出一致性")
+def main(output_dir, small, skip_generate, check_compatibility, test_outputs):
+    """生成并测试PyTorch和MindSpore共享权重"""
     
     # 创建输出目录
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     
     # 权重文件路径
-    weights_path = os.path.join(args.output_dir, "llama_shared.safetensors")
+    weights_path = os.path.join(output_dir, "llama_shared.safetensors")
     
     # 生成权重
-    if not args.skip_generate or not os.path.exists(weights_path):
-        generate_weights(weights_path, args.small)
+    if not skip_generate or not os.path.exists(weights_path):
+        generate_weights(weights_path, small)
     
     # 测试PyTorch加载
     pytorch_success = test_pytorch_loading(weights_path)
@@ -219,11 +223,11 @@ def main():
     mindspore_success = test_mindspore_loading(weights_path)
     
     # 兼容性检查
-    if args.check_compatibility:
+    if check_compatibility:
         check_weights_compatibility(weights_path)
     
     # 测试模型输出一致性
-    if args.test_outputs:
+    if test_outputs:
         test_model_outputs(weights_path)
     
     # 总结
