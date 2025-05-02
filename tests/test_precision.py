@@ -1,8 +1,12 @@
+import os
+
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import mindspore as ms
 import numpy as np
 import random
-import os
 from pathlib import Path
 import json
 from typing import Dict, List, Optional, Any
@@ -10,8 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor
 import argparse
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import zwx_ms.model.llama_pt
 
 import zwx_ms.mock.mock_ms
 import zwx_ms.mock.mock_torch
@@ -19,12 +22,10 @@ import zwx_ms.mock.mock_torch
 
 # 自定义模块导入
 from zwx_ms.analysis import analyze_runs
-from zwx_ms.model.torch.llama import create_test_model as create_torch_model
-import zwx_ms.model.torch.llama as torch_llama
-from zwx_ms.model.mindspore.llama import create_test_model as create_ms_model
+from zwx_ms.model.llama_pt import create_test_model as create_torch_model
+from zwx_ms.model.llama_ms import create_test_model as create_ms_model
 from zwx_ms.mock.mock_ms import register_module_info_ms as register_ms_module
 from zwx_ms.mock.mock_torch import register_module_info_pt as register_torch_module
-import zwx_ms.model.mindspore.llama as ms_llama
 
 @dataclass
 class InjectedError:
@@ -418,7 +419,7 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
     weights_path = os.path.join(weights_dir, "shared_weights.safetensors")
     if not os.path.exists(weights_path):
         from zwx_ms.utils.weight_utils import WeightManager
-        config = torch_llama.get_llama_config(small=True)
+        config = zwx_ms.model.llama_pt.get_llama_config(small=True)
         WeightManager.generate_shared_weights(config, weights_path, seed=42)
     
     # 加载共享权重
