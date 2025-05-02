@@ -44,5 +44,5 @@ vis_diff TEST:
 commit:
     git add .
     git commit -m "update"
-    http_proxy=127.0.0.1:10792 https_proxy=127.0.0.1:10792 git push origin main
+    http_proxy=127.0.0.1:10792 https_proxy=127.0.0.1:10792 git push -u origin master
 
