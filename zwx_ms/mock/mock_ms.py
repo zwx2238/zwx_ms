@@ -1,0 +1,93 @@
+import numpy as np
+from mindspore import Tensor, Parameter
+
+from zwx_ms.mock.mock import BaseOperatorLogger
+from zwx_ms.model.mindspore.llama import wrap_construct
+
+
+class MindSporeOperatorLogger(BaseOperatorLogger):
+    """MindSpore操作日志记录器"""
+
+    def log_operation(self, module, inputs, outputs):
+        """记录操作"""
+        # 获取模块名称
+        module_name = getattr(module, '_module_name', module.__class__.__name__)
+
+        # 创建模块条目
+        self._create_module_entry(module_name, self._get_module_parameters(module))
+
+        # 记录输入执行顺序
+        self._log_execution_index(module_name, 'inputs')
+
+        # 保存输入数据 - MindSpore版本
+        if isinstance(inputs, (list, tuple)) and len(inputs) > 0:
+            if isinstance(inputs[0], Tensor):
+                # 转换Tensor为numpy或其他可保存格式
+                self.logs[module_name]['inputs'].append(inputs[0].asnumpy())
+            else:
+                # 处理复杂输入
+                processed_inputs = []
+                for x in inputs:
+                    if isinstance(x, Tensor):
+                        processed_inputs.append(x.asnumpy())
+                    else:
+                        processed_inputs.append(x)
+                self.logs[module_name]['inputs'].append(processed_inputs)
+
+        # 记录输出执行顺序
+        self._log_execution_index(module_name, 'outputs')
+
+        # 保存输出数据 - MindSpore版本
+        if isinstance(outputs, Tensor):
+            self.logs[module_name]['outputs'].append(outputs.asnumpy())
+        elif isinstance(outputs, (tuple, list)):
+            # 处理复杂输出
+            processed_outputs = []
+            for x in outputs:
+                if isinstance(x, Tensor):
+                    processed_outputs.append(x.asnumpy())
+                else:
+                    processed_outputs.append(x)
+            self.logs[module_name]['outputs'].append(processed_outputs)
+
+    def _get_module_parameters(self, module) -> dict:
+        """获取模块的所有参数 - MindSpore版本"""
+        params = {}
+        for name in module._params:
+            param = getattr(module, name)
+            if isinstance(param, Parameter):
+                params[name] = param.asnumpy()
+        return params
+
+    def _save_module_data(self, path, data):
+        """保存模块数据到文件系统 - MindSpore版本"""
+        # 保存输入数据
+        if data['inputs']:
+            input_data_path = path / "inputs.npy"
+            np.save(str(input_data_path), data['inputs'])
+
+        # 保存输出数据
+        if data['outputs']:
+            output_data_path = path / "outputs.npy"
+            np.save(str(output_data_path), data['outputs'])
+
+        # 分别保存每个参数，只使用参数名
+        if data['parameters']:
+            for param_name, param_array in data['parameters'].items():
+                param_path = path / f"{param_name}.npy"
+                np.save(str(param_path), param_array)
+
+
+def register_module_info_ms(module, prefix: str = ''):
+    """为模块注册名称信息并包装construct方法 - MindSpore版本"""
+    # 设置当前模块的名称
+    module._module_name = prefix if prefix else module.__class__.__name__
+
+    # 包装construct方法
+    wrap_construct(module)
+
+    # 递归处理子模块 - MindSpore版本
+    for name, child in module._cells.items():
+        if child is not None:
+            full_name = f"{prefix}.{name}" if prefix else name
+            register_module_info_ms(child, full_name)
