@@ -14,7 +14,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 自定义模块导入
-from zwx_ms.analysis.analyzer import analyze_runs
+from zwx_ms.analysis import analyze_runs
 from zwx_ms.model.torch.llama import create_test_model as create_torch_model
 from zwx_ms.model.torch.llama import register_module_info as register_torch_module
 import zwx_ms.model.torch.llama as torch_llama
