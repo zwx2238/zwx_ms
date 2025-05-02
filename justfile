@@ -41,31 +41,8 @@ vis_diff TEST:
     @echo "打开分析文件夹..."
     @explorer test_cases\{{TEST}}\analysis
 
-# 将项目上传到 GitHub
-github-push USERNAME REPO="zwx_ms":
-    #!/bin/bash
-    # 初始化 git 仓库
-    git init
-    # 添加 .gitignore 文件 (如果需要的话)
+commit:
     git add .
-    # 创建初始提交
-    git commit -m "初始提交: PyTorch 和 MindSpore 框架精度对比工具"
-    # 创建远程仓库链接
-    git remote add origin https://github.com/{{USERNAME}}/{{REPO}}.git
-    # 设置分支名称并推送
-    git branch -M main
-    git push -u origin main
-    # 输出成功信息
-    echo "项目已成功上传到 GitHub 仓库: https://github.com/{{USERNAME}}/{{REPO}}"
-    echo "请确保您已在 GitHub.com 上手动创建了同名仓库"
-
-# 更新现有的 GitHub 仓库
-github-update MESSAGE="更新: 代码改进与功能修复":
-    # 添加所有更改
-    git add .
-    # 提交更改
-    git commit -m "{{MESSAGE}}"
-    # 推送到远程仓库
+    git commit -m "update"
     git push
-    echo "已成功更新 GitHub 仓库"
 
