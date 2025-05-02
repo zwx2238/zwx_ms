@@ -415,12 +415,10 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
     weights_path = os.path.join(weights_dir, "shared_weights.safetensors")
     if not os.path.exists(weights_path):
         from weight_utils import WeightManager
-        print(f"为PyTorch和MindSpore生成共享权重: {weights_path}")
         config = torch_llama.get_llama_config(small=True)
         WeightManager.generate_shared_weights(config, weights_path, seed=42)
     
     # 加载共享权重
-    print(f"PyTorch模型加载共享权重: {weights_path}")
     try:
         model.load_weights(weights_path)
         print("权重加载成功")
@@ -440,9 +438,7 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
     register_torch_module(model)
     
     # 运行模型
-    batch_size = 1
-    seq_len = 10
-    input_ids = torch.tensor(input_data if input_data is not None else torch.randint(0, 32000, (batch_size, seq_len)), dtype=torch.long)
+    input_ids = torch.tensor(input_data, dtype=torch.long)
     
     # 清除已有日志
     torch_llama.torch_logger.clear_logs()
@@ -474,7 +470,6 @@ def run_mindspore_model(save_dir: str, error_injector: Optional = None, input_da
     
     # 加载共享权重
     weights_path = os.path.join(weights_dir, "shared_weights.safetensors")
-    print(f"MindSpore模型加载共享权重: {weights_path}")
     try:
         model.load_weights(weights_path)
         print("权重加载成功")
@@ -492,11 +487,8 @@ def run_mindspore_model(save_dir: str, error_injector: Optional = None, input_da
     
     # 注册模块信息
     register_ms_module(model)
-    
-    # 运行模型
-    batch_size = 1
-    seq_len = 10
-    input_ids = ms.Tensor(input_data if input_data is not None else np.random.randint(0, 32000, (batch_size, seq_len)), ms.int32)
+
+    input_ids = ms.Tensor(input_data, ms.int32)
     
     # 清除已有日志
     ms_llama.ms_logger.clear_logs()
@@ -603,8 +595,6 @@ def run_test_case(test_dir: str, config: Dict) -> None:
     # 使用固定种子生成随机输入
     np.random.seed(42)
     input_data = np.random.randint(0, 32000, (batch_size, seq_len))
-    np.save(os.path.join(test_dir, "shared_input.npy"), input_data)
-    print(f"共享输入数据已保存: {os.path.join(test_dir, 'shared_input.npy')}")
     
     # 分别运行PyTorch和MindSpore模型
     print("运行PyTorch模型...")

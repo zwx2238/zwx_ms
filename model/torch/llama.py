@@ -81,9 +81,8 @@ def wrap_forward(module: torch.nn.Module):
         return outputs
 
     # 安全地获取模块名称
-    module_name = getattr(module, '_module_name', module.__class__.__name__)
-    # print(f"包装模块: {module_name}")
-    
+    module_name = module._module_name
+
     module.forward = wrapped_forward
 
 def register_module_info(module: torch.nn.Module, prefix: str = ''):
@@ -167,7 +166,6 @@ class LlamaDecoderLayer(nn.Module):
         hidden_states = residual + hidden_states
         
         # FFN
-        residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
