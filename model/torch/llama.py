@@ -4,13 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import sys
 import os
-import json
-from pathlib import Path
 
 # 导入基础模块路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from mock import BaseOperatorLogger
-from weight_utils import WeightManager
+from mock.mock import BaseOperatorLogger
+from utils.weight_utils import WeightManager
 
 class TorchOperatorLogger(BaseOperatorLogger):
     """PyTorch操作日志记录器"""

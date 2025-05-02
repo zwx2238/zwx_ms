@@ -4,18 +4,17 @@ import numpy as np
 import random
 import os
 from pathlib import Path
-import uuid
-import shutil
 import json
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor
-import sys
 import argparse
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 自定义模块导入
-from analyzer import analyze_runs
+from analysis.analyzer import analyze_runs
 from model.torch.llama import create_test_model as create_torch_model
 from model.torch.llama import register_module_info as register_torch_module
 import model.torch.llama as torch_llama
@@ -414,7 +413,7 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
     # 生成共享权重文件（如果不存在）
     weights_path = os.path.join(weights_dir, "shared_weights.safetensors")
     if not os.path.exists(weights_path):
-        from weight_utils import WeightManager
+        from utils.weight_utils import WeightManager
         config = torch_llama.get_llama_config(small=True)
         WeightManager.generate_shared_weights(config, weights_path, seed=42)
     

@@ -3,12 +3,11 @@ import sys
 import argparse
 import numpy as np
 import json
-from pathlib import Path
 
 # 确保能导入自定义模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from weight_utils import WeightManager
+from utils.weight_utils import WeightManager
 
 def get_model_config(small=True):
     """获取模型配置"""

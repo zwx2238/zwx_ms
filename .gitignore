@@ -4,3 +4,4 @@ __pycache__/
 test_cases/
 .venv
 weights/
+test_case*
