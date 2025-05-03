@@ -42,26 +42,11 @@ def analyze_runs(base_dir: str, ref_dir: str, output_dir: str = None) -> Dict[st
     # 绘制差异热力图
     report.plot_diff_heatmap(diffs)
 
-    # 绘制差异分布图
-    report.plot_diff_distribution(diffs)
-
     # 保存摘要
     report.save_summary(diffs)
 
-    # 找出有问题的操作
-    problematic_ops = analyzer.find_problematic_ops()
-    print(f"发现 {len(problematic_ops)} 个可能有问题的操作")
-
-    # 可视化问题操作
-    if problematic_ops:
-        print("可能有问题的操作:")
-        for op in problematic_ops:
-            print(f"  - {op}")
-
-    print("分析完成!")
-
     # 准备返回结果
-    result = {"module_comparisons": {}, "problematic_ops": problematic_ops}
+    result = {"module_comparisons": {}}
 
     # 将差异数据转换为字典格式
     for diff in diffs:

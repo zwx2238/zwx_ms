@@ -3,15 +3,109 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Literal
 
 import numpy as np
+import torch
+import mindspore as ms
 
 from precision_compare.analysis import analyze_runs
 from precision_compare.mock.error import ErrorInjector
-from precision_compare.case.execute_ms import run_mindspore_model
-from precision_compare.case.execute_pt import run_pytorch_model
+from precision_compare.model.model import create_test_model
+from precision_compare.model.llama_ms import LlamaForCausalLM as MSLlamaForCausalLM
+from precision_compare.model.llama_pt import LlamaForCausalLM as PTLlamaForCausalLM
+from precision_compare.mock.mock_ms import register_ms_module, MindSporeOperatorLogger
+from precision_compare.mock.mock_torch import register_torch_module, TorchOperatorLogger
 from precision_compare.utils import set_random_seed
+from precision_compare.utils.weight_utils import WeightManager
+from precision_compare.model.config import get_llama_config
+
+
+def run_model(
+    save_dir: str,
+    framework: Literal["torch", "mindspore"],
+    error_injector: Optional = None,
+    input_data: np.ndarray = None,
+) -> np.ndarray:
+    """统一的模型执行函数
+
+    Args:
+        save_dir: 保存目录
+        framework: 使用的框架，可选 "torch" 或 "mindspore"
+        error_injector: 错误注入器
+        input_data: 输入数据
+
+    Returns:
+        模型输出的numpy数组
+    """
+    # 创建框架特定的保存目录
+    framework_save_dir = os.path.join(save_dir, framework)
+    os.makedirs(framework_save_dir, exist_ok=True)
+    weights_dir = os.path.join(save_dir, "weights")
+    os.makedirs(weights_dir, exist_ok=True)
+
+    # 根据框架选择模型类和设置
+    if framework == "torch":
+        model_class = PTLlamaForCausalLM
+        logger_class = TorchOperatorLogger
+        register_module = register_torch_module
+        input_tensor = torch.tensor(input_data, dtype=torch.long)
+    else:  # mindspore
+        ms.set_context(mode=ms.PYNATIVE_MODE)
+        model_class = MSLlamaForCausalLM
+        logger_class = MindSporeOperatorLogger
+        register_module = register_ms_module
+        input_tensor = ms.Tensor(input_data, ms.int32)
+
+    # 创建模型
+    model = create_test_model(model_class)
+
+    # 处理权重
+    weights_path = os.path.join(weights_dir, "shared_weights.safetensors")
+    if not os.path.exists(weights_path) and framework == "torch":
+        config = get_llama_config(small=True)
+        WeightManager.generate_shared_weights(config, weights_path, seed=42)
+
+    # 加载权重
+    try:
+        model.load_weights(weights_path)
+        print("权重加载成功")
+    except Exception as e:
+        print(f"权重加载失败: {str(e)}")
+
+    # 注入错误（如果有）
+    if error_injector:
+        print(f"注入错误到{framework}模型...")
+        error_info = error_injector(model)
+        # 保存错误信息
+        error_info_path = Path(framework_save_dir) / "injected_error.json"
+        with open(error_info_path, "w", encoding="utf-8") as f:
+            json.dump(error_info.__dict__, f, indent=2, ensure_ascii=False)
+
+    # 注册模块信息
+    logger = logger_class()
+    register_module(model, logger)
+
+    # 执行前向传播
+    if framework == "torch":
+        with torch.no_grad():
+            outputs = model(input_tensor)
+        result = outputs.detach().numpy()
+    else:
+        outputs = model(input_tensor)
+        result = outputs.asnumpy()
+
+    # 保存日志
+    logger.dump_logs(framework_save_dir)
+
+    # 保存输入和输出
+    np.save(
+        os.path.join(save_dir, f"{framework}_input.npy"),
+        input_tensor.numpy() if framework == "torch" else input_tensor.asnumpy(),
+    )
+    np.save(os.path.join(save_dir, f"{framework}_output.npy"), result)
+
+    return result
 
 
 def run_test_case(test_dir: str, config: Dict) -> None:
@@ -29,91 +123,16 @@ def run_test_case(test_dir: str, config: Dict) -> None:
     with open(os.path.join(test_dir, "test_config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
 
-    # 获取错误注入配置
-    error_type = config.get("error_type", "none")
-    module_path = config.get("module_path", "")
-    framework = config.get(
-        "framework", "both"
-    )  # 选择注入错误的框架: torch, mindspore, both
-
-    # 首先生成固定的输入数据，确保两个框架使用相同的输入
-    print("生成统一输入数据...")
-    batch_size = 1
-    seq_len = 10
-    # 使用固定种子生成随机输入
-    np.random.seed(42)
-    input_data = np.random.randint(0, 32000, (batch_size, seq_len))
+    input_data = get_input_ids()
 
     # 分别运行PyTorch和MindSpore模型
     print("运行PyTorch模型...")
-    torch_error_injector = None
-    if error_type != "none" and framework in ["torch", "both"]:
-        # 选择合适的错误注入方法
-        if error_type == "weight_noise":
-            scale = config.get("scale", 0.01)
-            torch_error_injector = lambda m: ErrorInjector.inject_weight_noise_torch(
-                m, module_path, scale
-            )
-        elif error_type == "dtype_cast":
-            dtype = config.get("dtype", "float16")
-            torch_error_injector = lambda m: ErrorInjector.inject_dtype_cast_torch(
-                m, module_path, dtype
-            )
-        elif error_type == "activation_quantization":
-            bits = config.get("bits", 4)
-            torch_error_injector = (
-                lambda m: ErrorInjector.inject_activation_quantization_torch(
-                    m, module_path, bits
-                )
-            )
-
-    # 传递共享输入数据路径
-    torch_output = run_pytorch_model(
-        test_dir, torch_error_injector, input_data=input_data
-    )
+    torch_error_injector = ErrorInjector.create_error_injector(config, "torch")
+    torch_output = run_model(test_dir, "torch", torch_error_injector, input_data)
 
     print("\n运行MindSpore模型...")
-    ms_error_injector = None
-    if error_type != "none" and framework in ["mindspore", "both"]:
-        # 选择合适的错误注入方法
-        if error_type == "weight_noise":
-            scale = config.get("scale", 0.01)
-            ms_error_injector = lambda m: ErrorInjector.inject_weight_noise_mindspore(
-                m, module_path, scale
-            )
-        elif error_type == "dtype_cast":
-            dtype = config.get("dtype", "float16")
-            ms_error_injector = lambda m: ErrorInjector.inject_dtype_cast_mindspore(
-                m, module_path, dtype
-            )
-        elif error_type == "activation_quantization":
-            bits = config.get("bits", 4)
-            ms_error_injector = (
-                lambda m: ErrorInjector.inject_activation_quantization_mindspore(
-                    m, module_path, bits
-                )
-            )
-        elif error_type == "pynative_graph_switch":
-            ms_error_injector = (
-                lambda m: ErrorInjector.inject_pynative_graph_switch_mindspore(
-                    m, module_path
-                )
-            )
-        elif error_type == "tensor_layout":
-            layout = config.get("layout", "NCHW")
-            ms_error_injector = lambda m: ErrorInjector.inject_tensor_layout_mindspore(
-                m, module_path, layout
-            )
-        elif error_type == "mixed_precision":
-            enable = config.get("enable", True)
-            ms_error_injector = (
-                lambda m: ErrorInjector.inject_mixed_precision_mindspore(
-                    m, module_path, enable
-                )
-            )
-
-    # 传递共享输入数据路径
-    ms_output = run_mindspore_model(test_dir, ms_error_injector, input_data=input_data)
+    ms_error_injector = ErrorInjector.create_error_injector(config, "mindspore")
+    ms_output = run_model(test_dir, "mindspore", ms_error_injector, input_data)
 
     # 比较两个模型的输出
     print("\n比较两个框架的输出差异...")
@@ -183,6 +202,17 @@ def run_test_case(test_dir: str, config: Dict) -> None:
         traceback.print_exc()
 
 
+def get_input_ids():
+    # 首先生成固定的输入数据，确保两个框架使用相同的输入
+    print("生成统一输入数据...")
+    batch_size = 1
+    seq_len = 10
+    # 使用固定种子生成随机输入
+    np.random.seed(42)
+    input_data = np.random.randint(0, 32000, (batch_size, seq_len))
+    return input_data
+
+
 def run_parallel_tests(test_configs: List[Dict]) -> None:
     """并行运行多个测试用例"""
     print(f"\n开始执行 {len(test_configs)} 个测试用例...")
@@ -209,7 +239,7 @@ def run_parallel_tests(test_configs: List[Dict]) -> None:
         for future in futures:
             try:
                 future.result()
-            except Exception as e:
+            except Exception:
                 import traceback
 
                 traceback.print_exc()
@@ -221,7 +251,6 @@ def create_test_case(case_name: str, config: Dict) -> str:
     """创建测试用例目录"""
     # 获取错误类型
     error_type = config.get("error_type", "none")
-    module_path = config.get("module_path", "")
 
     # 使用日期后缀确保唯一性
     date_suffix = datetime.now().strftime("%Y%m%d")

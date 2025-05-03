@@ -153,25 +153,3 @@ class LlamaForCausalLM(nn.Module):
             print(f"PyTorch模型部分权重未加载，共 {len(missing_keys)} 个参数缺失")
 
         return missing_keys
-
-
-def save_model_weights(model, output_path: str):
-    """保存模型权重为safetensors格式"""
-    # 获取权重
-    state_dict = model.state_dict()
-
-    # 使用WeightManager保存
-    WeightManager.generate_shared_weights(get_llama_config(small=True), output_path)
-
-    print(f"模型权重保存到: {output_path}")
-
-
-def load_model_with_weights(weights_path: str):
-    """创建模型并加载权重"""
-    # 创建模型
-    model = create_test_model(LlamaForCausalLM)
-
-    # 加载权重
-    model.load_weights(weights_path)
-
-    return model

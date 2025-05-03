@@ -1,15 +1,19 @@
 import json
-from typing import Dict, Any, List, Tuple
+from abc import ABC, abstractmethod
+from typing import Dict, Any, List, Tuple, Literal
 from pathlib import Path
+import numpy as np
 
 
-class BaseOperatorLogger:
+class BaseOperatorLogger(ABC):
     """基础操作日志记录器，为PyTorch和MindSpore提供通用功能"""
 
-    def __init__(self):
+    def __init__(self, framework: Literal["pytorch", "mindspore"]):
         self.logs: Dict[str, Dict[str, Any]] = {}
         self.gid = 0
         self.exec_counter = 0  # 执行计数器
+        self.framework = framework
+        self.file_extension = ".pt" if framework == "pytorch" else ".npy"
 
     def clear_logs(self):
         """清除所有日志记录"""
@@ -39,17 +43,68 @@ class BaseOperatorLogger:
         for module_name, data in self.logs.items():
             # 按照模块的层级结构创建目录
             module_parts = module_name.split(".")
-
-            # 创建每一层的目录
             current_path = output_path
             for part in module_parts:
                 current_path = current_path / part
                 if not current_path.exists():
                     current_path.mkdir(parents=False, exist_ok=True)
 
-            # 具体的数据保存方法由子类实现
             self._save_module_data(current_path, data)
 
+    def log_operation(self, module, inputs, outputs):
+        """通用的操作记录逻辑"""
+        module_name = module._prefix
+        self._create_module_entry(module_name, self._get_module_parameters(module))
+
+        # 处理输入数据
+        if isinstance(inputs, (list, tuple)) and len(inputs) > 0:
+            processed_inputs = self._process_tensor_data(
+                inputs[0] if len(inputs) == 1 else inputs
+            )
+            self.logs[module_name]["inputs"].append(processed_inputs)
+
+        # 处理输出数据
+        processed_outputs = self._process_tensor_data(outputs)
+        self.logs[module_name]["outputs"].append(processed_outputs)
+
     def _save_module_data(self, path: Path, data: Dict[str, Any]):
-        """保存模块数据，由子类实现具体存储方式"""
-        raise NotImplementedError("子类必须实现此方法")
+        """通用的模块数据保存逻辑"""
+        # 保存输入数据
+        if data["inputs"]:
+            for idx, input_data in enumerate(data["inputs"]):
+                input_data_path = (
+                    path / f"{self.get_next_gid()}_inputs_{idx}{self.file_extension}"
+                )
+                self._save_data(input_data_path, input_data)
+
+        # 保存参数
+        if data["parameters"]:
+            for param_name, param_data in data["parameters"].items():
+                param_path = (
+                    path
+                    / f"{self.get_next_gid()}_parameters_{param_name}{self.file_extension}"
+                )
+                self._save_data(param_path, param_data)
+
+        # 保存输出数据
+        if data["outputs"]:
+            for idx, output_data in enumerate(data["outputs"]):
+                output_data_path = (
+                    path / f"{self.get_next_gid()}_outputs_{idx}{self.file_extension}"
+                )
+                self._save_data(output_data_path, output_data)
+
+    @abstractmethod
+    def _process_tensor_data(self, data):
+        """处理张量数据的抽象方法"""
+        pass
+
+    @abstractmethod
+    def _get_module_parameters(self, module) -> dict:
+        """获取模块参数的抽象方法"""
+        pass
+
+    @abstractmethod
+    def _save_data(self, path: Path, data: Any):
+        """保存数据的抽象方法"""
+        pass

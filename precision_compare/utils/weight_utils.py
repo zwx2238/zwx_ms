@@ -4,8 +4,24 @@ import torch
 import mindspore as ms
 import numpy as np
 from safetensors.torch import save_file, load_file
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple, NamedTuple
 from pathlib import Path
+
+
+class MatchResult(NamedTuple):
+    """参数匹配结果"""
+
+    torch_data: Optional[np.ndarray]
+    torch_name: Optional[str]
+    match_type: str
+
+
+class WeightLoadResult(NamedTuple):
+    """权重加载结果"""
+
+    missing_keys: List[str]
+    loaded_count: int
+    total_count: int
 
 
 class WeightManager:
@@ -37,7 +53,6 @@ class WeightManager:
         hidden_size = model_config.get("hidden_size", 768)
         intermediate_size = model_config.get("intermediate_size", 3072)
         num_hidden_layers = model_config.get("num_hidden_layers", 2)
-        num_attention_heads = model_config.get("num_attention_heads", 12)
 
         # 创建权重字典
         weights = {}
@@ -52,7 +67,6 @@ class WeightManager:
             layer_prefix = f"model.layers.{i}."
 
             # 自注意力层权重
-            head_dim = hidden_size // num_attention_heads
             attn_prefix = layer_prefix + "self_attn."
             weights[attn_prefix + "q_proj.weight"] = torch.normal(
                 0, 0.02, (hidden_size, hidden_size)
@@ -198,38 +212,9 @@ class WeightManager:
         return missing_keys
 
     @staticmethod
-    def load_mindspore_weights(
-        model, weights_path: str, strict: bool = True
-    ) -> List[str]:
-        """
-        为MindSpore模型加载权重
-
-        Args:
-            model: MindSpore模型实例
-            weights_path: 权重文件路径
-            strict: 是否严格检查所有键
-
-        Returns:
-            未加载的参数列表
-        """
-        # 加载safetensors文件
-        weights = load_file(weights_path)
-
-        # 尝试加载元数据（从单独的JSON文件）
-        metadata = None
-        metadata_path = weights_path.replace(".safetensors", "_metadata.json")
-        if os.path.exists(metadata_path):
-            try:
-                with open(metadata_path, "r", encoding="utf-8") as f:
-                    metadata = json.load(f)
-                print(
-                    f"已加载权重元数据, 模型配置包含 {len(metadata.get('model_config', {}))} 项"
-                )
-            except Exception as e:
-                print(f"无法解析权重元数据文件: {str(e)}")
-
-        # 建立Torch和MindSpore参数名称的映射关系
-        torch_to_ms_map = {
+    def _get_torch_to_ms_map() -> Dict[str, str]:
+        """获取PyTorch到MindSpore的参数名映射关系"""
+        return {
             # 基本参数映射
             "weight": "weight",
             "bias": "bias",
@@ -257,143 +242,256 @@ class WeightManager:
             "lm_head": "lm_head",
         }
 
-        # 获取MindSpore模型参数列表
-        ms_params = list(model.get_parameters())
-        ms_param_dict = {param.name: param for param in ms_params}
+    @staticmethod
+    def _try_load_metadata(weights_path: str) -> Optional[Dict]:
+        """尝试加载权重元数据"""
+        metadata_path = weights_path.replace(".safetensors", "_metadata.json")
+        if not os.path.exists(metadata_path):
+            return None
 
-        # 用于记录未加载的参数
-        missing_keys = []
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            print(
+                f"已加载权重元数据, 模型配置包含 {len(metadata.get('model_config', {}))} 项"
+            )
+            return metadata
+        except Exception as e:
+            print(f"无法解析权重元数据文件: {str(e)}")
+            return None
 
-        # 尝试加载每个MindSpore参数
-        for ms_name, ms_param in ms_param_dict.items():
-            # 直接匹配
-            if ms_name in weights:
-                # 转换为NumPy，再转为MindSpore Tensor
-                torch_data = weights[ms_name].numpy()
-                ms_param.set_data(ms.Tensor(torch_data, ms_param.dtype))
+    @staticmethod
+    def _try_direct_match(
+        ms_name: str, ms_param: ms.Parameter, weights: Dict
+    ) -> MatchResult:
+        """尝试直接匹配参数"""
+        if ms_name in weights and ms_param.shape == weights[ms_name].shape:
+            return MatchResult(weights[ms_name].numpy(), ms_name, "direct")
+        return MatchResult(None, None, "")
+
+    @staticmethod
+    def _check_partial_match(
+        torch_part: str,
+        ms_part: str,
+        torch_parts: List[str],
+        ms_parts: List[str],
+        i: int,
+        torch_to_ms_map: Dict[str, str],
+    ) -> bool:
+        """检查部分名称匹配"""
+        # 直接匹配
+        if torch_part == ms_part:
+            return True
+
+        # 检查映射
+        if i > 0:
+            partial_torch = ".".join(torch_parts[i - 1 : i + 1])
+            partial_ms = ".".join(ms_parts[i - 1 : i + 1])
+            if (
+                partial_torch in torch_to_ms_map
+                and torch_to_ms_map[partial_torch] == partial_ms
+            ):
+                return True
+
+        # 单个部分映射
+        if torch_part in torch_to_ms_map and torch_to_ms_map[torch_part] == ms_part:
+            return True
+
+        return False
+
+    @staticmethod
+    def _check_special_match(
+        torch_parts: List[str],
+        ms_parts: List[str],
+        i: int,
+        torch_to_ms_map: Dict[str, str],
+    ) -> bool:
+        """检查特殊映射匹配"""
+        if i == len(torch_parts) - 1:
+            last_two_torch = ".".join(torch_parts[-2:])
+            last_two_ms = ".".join(ms_parts[-2:])
+            if (
+                last_two_torch in torch_to_ms_map
+                and torch_to_ms_map[last_two_torch] == last_two_ms
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _check_name_match(
+        ms_parts: List[str], torch_parts: List[str], torch_to_ms_map: Dict[str, str]
+    ) -> bool:
+        """检查参数名称是否匹配"""
+        if len(ms_parts) != len(torch_parts):
+            return False
+
+        for i in range(len(torch_parts)):
+            # 检查常规匹配
+            if WeightManager._check_partial_match(
+                torch_parts[i], ms_parts[i], torch_parts, ms_parts, i, torch_to_ms_map
+            ):
                 continue
 
-            # 尝试寻找对应的PyTorch权重名称
-            found = False
+            # 检查特殊匹配
+            if WeightManager._check_special_match(
+                torch_parts, ms_parts, i, torch_to_ms_map
+            ):
+                continue
 
-            # 1. 首先尝试直接匹配完整路径
-            for torch_name, torch_weight in weights.items():
-                if torch_name == ms_name and ms_param.shape == torch_weight.shape:
-                    torch_data = torch_weight.numpy()
-                    ms_param.set_data(ms.Tensor(torch_data, ms_param.dtype))
-                    found = True
-                    print(f"精确匹配参数: {torch_name} -> {ms_name}")
-                    break
+            return False
+        return True
 
-            # 2. 如果未找到，尝试使用参数映射规则
-            if not found:
-                for torch_name, torch_weight in weights.items():
-                    ms_parts = ms_name.split(".")
-                    torch_parts = torch_name.split(".")
+    @staticmethod
+    def _try_name_mapping_match(
+        ms_name: str,
+        ms_param: ms.Parameter,
+        weights: Dict,
+        torch_to_ms_map: Dict[str, str],
+    ) -> MatchResult:
+        """尝试通过名称映射匹配参数"""
+        ms_parts = ms_name.split(".")
 
-                    # 检查层级是否匹配
-                    if len(ms_parts) != len(torch_parts):
-                        continue
+        for torch_name, torch_weight in weights.items():
+            if ms_param.shape != torch_weight.shape:
+                continue
 
-                    # 逐层检查名称映射
-                    match = True
-                    mapped_torch_name = []
+            torch_parts = torch_name.split(".")
+            if WeightManager._check_name_match(ms_parts, torch_parts, torch_to_ms_map):
+                return MatchResult(torch_weight.numpy(), torch_name, "mapping")
 
-                    for i in range(len(torch_parts)):
-                        torch_part = torch_parts[i]
-                        ms_part = ms_parts[i]
+        return MatchResult(None, None, "")
 
-                        # 检查当前部分是否匹配
-                        if torch_part == ms_part:
-                            mapped_torch_name.append(torch_part)
-                            continue
+    @staticmethod
+    def _try_shape_match(
+        ms_name: str, ms_param: ms.Parameter, weights: Dict
+    ) -> MatchResult:
+        """尝试通过形状匹配参数"""
+        ms_last = ms_name.split(".")[-1]
 
-                        # 检查是否存在直接映射
-                        if i > 0:  # 跳过第一层，通常是模型名
-                            partial_torch_path = ".".join(torch_parts[i - 1 : i + 1])
-                            partial_ms_path = ".".join(ms_parts[i - 1 : i + 1])
+        for torch_name, torch_weight in weights.items():
+            if ms_param.shape != torch_weight.shape:
+                continue
 
-                            # 检查部分路径映射
-                            if (
-                                partial_torch_path in torch_to_ms_map
-                                and torch_to_ms_map[partial_torch_path]
-                                == partial_ms_path
-                            ):
-                                mapped_torch_name.append(torch_part)
-                                continue
+            torch_last = torch_name.split(".")[-1]
+            if WeightManager._check_shape_match_rules(ms_last, torch_last):
+                return MatchResult(torch_weight.numpy(), torch_name, "shape")
 
-                        # 检查单个部分映射
-                        if (
-                            torch_part in torch_to_ms_map
-                            and torch_to_ms_map[torch_part] == ms_part
-                        ):
-                            mapped_torch_name.append(torch_part)
-                            continue
+        return MatchResult(None, None, "")
 
-                        # 检查特殊映射（如embedding_table和gamma/beta）
-                        if i == len(torch_parts) - 1:  # 最后一部分是参数名
-                            last_two_torch = ".".join(torch_parts[-2:])
-                            last_two_ms = ".".join(ms_parts[-2:])
+    @staticmethod
+    def _check_shape_match_rules(ms_last: str, torch_last: str) -> bool:
+        """检查形状匹配规则"""
+        return any(
+            [
+                ms_last == "embedding_table" and torch_last == "weight",
+                ms_last == "gamma" and torch_last == "weight",
+                ms_last == "beta" and torch_last == "bias",
+            ]
+        )
 
-                            if (
-                                last_two_torch in torch_to_ms_map
-                                and torch_to_ms_map[last_two_torch] == last_two_ms
-                            ):
-                                mapped_torch_name.append(torch_part)
-                                continue
+    @staticmethod
+    def _try_load_parameter(
+        ms_param: ms.Parameter,
+        torch_data: np.ndarray,
+        match_type: str,
+        torch_name: Optional[str] = None,
+    ) -> bool:
+        """尝试加载参数"""
+        try:
+            ms_param.set_data(ms.Tensor(torch_data, ms_param.dtype))
+            match_desc = {
+                "direct": "精确匹配参数",
+                "mapping": "映射参数",
+                "shape": "形状匹配参数",
+            }
+            msg = match_desc.get(match_type, "")
+            if msg:
+                if torch_name and torch_name != ms_param.name:
+                    print(f"{msg}: {torch_name} -> {ms_param.name}")
+                else:
+                    print(f"{msg}: {ms_param.name}")
+            return True
+        except Exception as e:
+            print(f"加载参数 {ms_param.name} 失败: {str(e)}")
+            return False
 
-                        # 如果没有匹配
-                        match = False
-                        break
+    @staticmethod
+    def _match_parameter(
+        ms_param: ms.Parameter, weights: Dict, torch_to_ms_map: Dict[str, str]
+    ) -> bool:
+        """匹配并加载单个参数"""
+        ms_name = ms_param.name
 
-                    if match and ms_param.shape == torch_weight.shape:
-                        try:
-                            # 转换为NumPy，再转为MindSpore Tensor
-                            torch_data = torch_weight.numpy()
-                            ms_param.set_data(ms.Tensor(torch_data, ms_param.dtype))
-                            found = True
-                            print(f"映射参数: {torch_name} -> {ms_name}")
-                            break
-                        except Exception as e:
-                            print(f"转换参数 {torch_name} -> {ms_name} 失败: {str(e)}")
-
-            # 3. 如果仍未找到，尝试形状匹配的最后机会
-            if not found:
-                for torch_name, torch_weight in weights.items():
-                    # 仅检查形状和最后一个组件名称的部分匹配
-                    if ms_param.shape == torch_weight.shape:
-                        # 获取最后一层名称
-                        ms_last = ms_name.split(".")[-1]
-                        torch_last = torch_name.split(".")[-1]
-
-                        # 检查特殊映射关系
-                        if (
-                            (ms_last == "embedding_table" and torch_last == "weight")
-                            or (ms_last == "gamma" and torch_last == "weight")
-                            or (ms_last == "beta" and torch_last == "bias")
-                        ):
-                            try:
-                                torch_data = torch_weight.numpy()
-                                ms_param.set_data(ms.Tensor(torch_data, ms_param.dtype))
-                                found = True
-                                print(f"形状匹配参数: {torch_name} -> {ms_name}")
-                                break
-                            except Exception as e:
-                                print(
-                                    f"转换参数 {torch_name} -> {ms_name} 失败: {str(e)}"
-                                )
-
-            if not found:
-                missing_keys.append(ms_name)
-                if strict:
-                    print(f"缺失参数: {ms_name}, 形状: {ms_param.shape}")
-
-        # 检查是否所有参数都已加载
-        if missing_keys and strict:
-            print(f"警告: {len(missing_keys)}/{len(ms_param_dict)} 参数未加载")
-            print(
-                f"未加载的参数: {missing_keys[:5]}{'...' if len(missing_keys) > 5 else ''}"
+        # 1. 直接匹配
+        match_result = WeightManager._try_direct_match(ms_name, ms_param, weights)
+        if match_result.torch_data is not None:
+            return WeightManager._try_load_parameter(
+                ms_param,
+                match_result.torch_data,
+                match_result.match_type,
+                match_result.torch_name,
             )
+
+        # 2. 名称映射匹配
+        match_result = WeightManager._try_name_mapping_match(
+            ms_name, ms_param, weights, torch_to_ms_map
+        )
+        if match_result.torch_data is not None:
+            return WeightManager._try_load_parameter(
+                ms_param,
+                match_result.torch_data,
+                match_result.match_type,
+                match_result.torch_name,
+            )
+
+        # 3. 形状匹配
+        match_result = WeightManager._try_shape_match(ms_name, ms_param, weights)
+        if match_result.torch_data is not None:
+            return WeightManager._try_load_parameter(
+                ms_param,
+                match_result.torch_data,
+                match_result.match_type,
+                match_result.torch_name,
+            )
+
+        return False
+
+    @staticmethod
+    def _report_loading_results(result: WeightLoadResult, strict: bool) -> None:
+        """报告加载结果"""
+        if result.missing_keys and strict:
+            print(f"警告: {len(result.missing_keys)}/{result.total_count} 参数未加载")
+            print(
+                f"未加载的参数: {result.missing_keys[:5]}{'...' if len(result.missing_keys) > 5 else ''}"
+            )
+
+    @staticmethod
+    def load_mindspore_weights(
+        model, weights_path: str, strict: bool = True
+    ) -> List[str]:
+        """为MindSpore模型加载权重"""
+        # 加载权重和映射关系
+        weights = load_file(weights_path)
+        torch_to_ms_map = WeightManager._get_torch_to_ms_map()
+        WeightManager._try_load_metadata(weights_path)
+
+        # 获取模型参数
+        ms_params = list(model.get_parameters())
+        missing_keys = []
+        loaded_count = 0
+
+        # 尝试加载每个参数
+        for ms_param in ms_params:
+            if WeightManager._match_parameter(ms_param, weights, torch_to_ms_map):
+                loaded_count += 1
+            else:
+                missing_keys.append(ms_param.name)
+                if strict:
+                    print(f"缺失参数: {ms_param.name}, 形状: {ms_param.shape}")
+
+        # 报告加载结果
+        result = WeightLoadResult(missing_keys, loaded_count, len(ms_params))
+        WeightManager._report_loading_results(result, strict)
 
         return missing_keys
 
