@@ -219,8 +219,8 @@ class ModelAnalyzer:
             )
         return diffs
 
-    def analyze_all(self, threshold: float = 0) -> List[TensorDiff]:
-        """分析所有模块的差异"""
+    def analyze_all(self, threshold: float = 0) -> pd.DataFrame:
+        """分析所有模块的差异，返回DataFrame格式的结果"""
         all_diffs = []
 
         def process_dir(dir_path: Path, relative_path: str = ""):
@@ -245,5 +245,20 @@ class ModelAnalyzer:
 
         process_dir(self.base_dir)
 
-        all_diffs.sort(key=lambda x: x.execution_index)
-        return all_diffs
+        # 将TensorDiff对象列表转换为DataFrame
+        df_data = []
+        for diff in sorted(all_diffs, key=lambda x: x.execution_index):
+            df_data.append(
+                {
+                    "module_name": diff.module_name,
+                    "tensor_type": diff.tensor_type,
+                    "max_abs_diff": diff.max_abs_diff,
+                    "cosine_similarity": diff.cosine_similarity,
+                    "location": str(diff.location),
+                    "shape": str(diff.shape),
+                    "max_rel_diff": diff.max_rel_diff,
+                    "execution_index": diff.execution_index,
+                }
+            )
+
+        return pd.DataFrame(df_data)
