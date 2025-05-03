@@ -119,17 +119,7 @@ class ModelAnalyzer:
         all_files = list(module_path.glob(f"*{tensor_type}_*.pt")) + list(
             module_path.glob(f"*{tensor_type}_*.npy")
         )
-
-        # 解析并过滤文件
-        valid_files = []
-        for file in all_files:
-            idx = self._parse_tensor_file_index(file, tensor_type)
-            if idx >= 0:
-                valid_files.append((idx, file))
-
-        # 按索引排序并返回文件列表
-        valid_files.sort(key=lambda x: x[0])
-        return [f[1] for f in valid_files[:max_files]]
+        return all_files
 
     def _parse_gid_from_filename(self, file_path: Path) -> int:
         """从文件名中解析gid
@@ -223,7 +213,7 @@ class ModelAnalyzer:
         diffs = []
 
         # 比较输入和输出
-        for tensor_type in ["inputs", "outputs"]:
+        for tensor_type in ["inputs", "parameters", "outputs"]:
             base_files = self._load_tensor_files(base_module_path, tensor_type)
             ref_files = self._load_tensor_files(ref_module_path, tensor_type)
             diffs.extend(
@@ -231,17 +221,6 @@ class ModelAnalyzer:
                     base_files, ref_files, module_path, tensor_type
                 )
             )
-
-        # 比较参数文件
-        breakpoint()
-        base_param_files = self._load_tensor_files(base_module_path, "parameters")
-        ref_param_files = self._load_tensor_files(ref_module_path, "parameters")
-        diffs.extend(
-            self._compare_tensor_files(
-                base_param_files, ref_param_files, module_path, "parameters"
-            )
-        )
-
         return diffs
 
     def analyze_all(self, threshold: float = 0) -> List[TensorDiff]:

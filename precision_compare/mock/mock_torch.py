@@ -58,7 +58,7 @@ class TorchOperatorLogger(BaseOperatorLogger):
         # 分别保存每个参数，只使用参数名
         if data["parameters"]:
             for param_name, param_tensor in data["parameters"].items():
-                param_path = path / f"{self.get_next_gid()}_{param_name}.pt"
+                param_path = path / f"{self.get_next_gid()}_parameters_{param_name}.pt"
                 torch.save(param_tensor, str(param_path))
 
         # 保存输出数据

@@ -67,7 +67,7 @@ class MindSporeOperatorLogger(BaseOperatorLogger):
         # 分别保存每个参数，只使用参数名
         if data["parameters"]:
             for param_name, param_array in data["parameters"].items():
-                param_path = path / f"{self.get_next_gid()}_{param_name}.npy"
+                param_path = path / f"{self.get_next_gid()}_parameters_{param_name}.npy"
                 np.save(str(param_path), param_array)
 
         # 保存输出数据
