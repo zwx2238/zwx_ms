@@ -233,6 +233,7 @@ class ModelAnalyzer:
             )
 
         # 比较参数文件
+        breakpoint()
         base_param_files = self._load_tensor_files(base_module_path, "parameters")
         ref_param_files = self._load_tensor_files(ref_module_path, "parameters")
         diffs.extend(
