@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -269,7 +270,6 @@ class ModelAnalyzer:
         process_dir(self.base_dir)
 
         all_diffs.sort(key=lambda x: x.execution_index)
-
         return all_diffs
 
     def find_problematic_ops(self) -> List[str]:
@@ -281,7 +281,7 @@ class ModelAnalyzer:
         # 按照执行顺序排序的差异列表
         significant_diffs = [
             d for d in diffs if d.cosine_similarity < 0.999
-        ]  # 使用1%的相对误差作为阈值
+        ]  # 使用0.999的余弦相似度作为阈值
 
         if not significant_diffs:
             return []  # 没有显著差异
@@ -302,14 +302,19 @@ class ModelAnalyzer:
 
         # 1. 找到第一个(按执行顺序)出现显著差异的模块
         first_diff = significant_diffs[0]
-        problematic_ops.append(f"{first_diff.module_name} (首次出现显著差异)")
+        problematic_ops.append(
+            f"{first_diff.module_name} ({first_diff.tensor_type}, 首次出现显著差异)"
+        )
 
-        # 2. 找到差异最大的模块
-        max_diff = max(significant_diffs, key=lambda d: d.cosine_similarity)
-        if max_diff.module_name != first_diff.module_name:
-            problematic_ops.append(
-                f"{max_diff.module_name} (最大余弦相似度: {max_diff.cosine_similarity:.2%})"
-            )
+        # 2. 找到差异最大的模块（分别对于inputs/outputs/parameters）
+        for tensor_type in ["inputs", "outputs", "parameters"]:
+            type_diffs = [d for d in significant_diffs if tensor_type in d.tensor_type]
+            if type_diffs:
+                max_diff = max(type_diffs, key=lambda d: d.max_abs_diff)
+                if max_diff.module_name != first_diff.module_name:
+                    problematic_ops.append(
+                        f"{max_diff.module_name} ({max_diff.tensor_type}, 最大绝对误差: {max_diff.max_abs_diff:.2e})"
+                    )
 
         # 3. 找到"修复"上游问题的模块
         for module, module_diff_list in module_diffs.items():
@@ -317,7 +322,17 @@ class ModelAnalyzer:
                 continue
 
             # 按执行顺序排序
-            sorted_diffs = module_diff_list
+            sorted_diffs = sorted(module_diff_list, key=lambda x: x.execution_index)
+
+            # 检查参数差异
+            param_diffs = [d for d in sorted_diffs if "parameters" in d.tensor_type]
+            if param_diffs:
+                max_param_diff = max(param_diffs, key=lambda d: d.max_abs_diff)
+                problematic_ops.append(
+                    f"{max_param_diff.module_name} (参数差异, 最大绝对误差: {max_param_diff.max_abs_diff:.2e})"
+                )
+
+            # 检查输入输出差异修复情况
             for i in range(1, len(sorted_diffs)):
                 curr = sorted_diffs[i]
                 prev = sorted_diffs[i - 1]

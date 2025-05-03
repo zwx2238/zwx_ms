@@ -1,14 +1,12 @@
 import os
 import sys
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from precision_compare.case.execute import run_test_case, run_parallel_tests
-from datetime import datetime
 import click
+from datetime import datetime
 
-
-# 自定义模块导入
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+from precision_compare.case.execute import run_test_case, run_parallel_tests
 
 
 @click.command()
@@ -58,7 +56,6 @@ def main(
 ):
     """测试PyTorch和MindSpore模型精度差异"""
 
-    # 构建测试配置
     test_config = {
         "error_type": error_type,
         "module_path": module_path,
@@ -71,35 +68,8 @@ def main(
     }
 
     if parallel:
-        # 多种测试配置
+        # 简化后的并行测试配置，只测试两种错误类型
         test_configs = [
-            # 基准比较
-            {"error_type": "none", "framework": "both"},
-            # MindSpore特有的错误类型
-            {
-                "error_type": "pynative_graph_switch",
-                "module_path": "model.layers.0",
-                "framework": "mindspore",
-            },
-            {
-                "error_type": "tensor_layout",
-                "module_path": "model.layers.0",
-                "framework": "mindspore",
-                "layout": "NCHW",
-            },
-            {
-                "error_type": "tensor_layout",
-                "module_path": "model.layers.0",
-                "framework": "mindspore",
-                "layout": "NHWC",
-            },
-            {
-                "error_type": "mixed_precision",
-                "module_path": "model",
-                "framework": "mindspore",
-                "enable": True,
-            },
-            # # 权重噪声测试
             {
                 "error_type": "weight_noise",
                 "module_path": "model.layers.1.input_layernorm",
@@ -107,24 +77,10 @@ def main(
                 "scale": 0.01,
             },
             {
-                "error_type": "weight_noise",
-                "module_path": "lm_head",
-                "framework": "torch",
-                "scale": 0.01,
-            },
-            # 类型转换测试
-            {
                 "error_type": "dtype_cast",
                 "module_path": "model",
                 "framework": "mindspore",
                 "dtype": "float16",
-            },
-            # 激活量化测试
-            {
-                "error_type": "activation_quantization",
-                "module_path": "model.layers.0",
-                "framework": "mindspore",
-                "bits": 4,
             },
         ]
         run_parallel_tests(test_configs)

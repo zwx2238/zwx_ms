@@ -92,7 +92,7 @@ class AnalysisReport:
                 ],
                 color=["red", "orange", "blue"],
             )
-            plt.title(f"模块 {module_name} 的差异")
+            plt.title(f"模块 {module_name} ({diffs[0].tensor_type}) 的差异")
             plt.tight_layout()
             plt.savefig(
                 self.output_dir / f"diff_heatmap_{self.timestamp}.png",
@@ -117,7 +117,7 @@ class AnalysisReport:
 
         for diff in diffs:
             # 保留完整的模块名，不进行截断
-            module_names.append(diff.module_name + "." + diff.tensor_type)
+            module_names.append(f"{diff.module_name}\n({diff.tensor_type})")
             max_abs_diffs.append(float(diff.max_abs_diff))
             max_rel_diffs.append(float(diff.max_rel_diff))
             cosine_diffs.append(float(diff.cosine_similarity))
