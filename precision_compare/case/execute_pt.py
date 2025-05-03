@@ -6,12 +6,17 @@ from typing import Optional
 import numpy as np
 import torch
 
-import zwx_ms.mock
-import zwx_ms.model
-from zwx_ms.model.llama_pt import create_test_model as create_torch_model
-from zwx_ms.mock.mock_torch import register_module_info_pt as register_torch_module
+import precision_compare.mock
+import precision_compare.model
+import precision_compare.model.config
+from precision_compare.model.llama_pt import LlamaForCausalLM
+from precision_compare.model.model import create_test_model
+from precision_compare.mock.mock_torch import register_torch_module, TorchOperatorLogger
 
-def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data: np.ndarray = None) -> np.ndarray:
+
+def run_pytorch_model(
+    save_dir: str, error_injector: Optional = None, input_data: np.ndarray = None
+) -> np.ndarray:
     """运行PyTorch模型并保存结果"""
     torch_save_dir = os.path.join(save_dir, "torch")
     os.makedirs(torch_save_dir, exist_ok=True)
@@ -19,13 +24,14 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
     os.makedirs(weights_dir, exist_ok=True)
 
     # 创建模型
-    model = create_torch_model()
+    model = create_test_model(LlamaForCausalLM)
 
     # 生成共享权重文件（如果不存在）
     weights_path = os.path.join(weights_dir, "shared_weights.safetensors")
     if not os.path.exists(weights_path):
-        from zwx_ms.utils.weight_utils import WeightManager
-        config = zwx_ms.model.llama_pt.get_llama_config(small=True)
+        from precision_compare.utils.weight_utils import WeightManager
+
+        config = precision_compare.model.config.get_llama_config(small=True)
         WeightManager.generate_shared_weights(config, weights_path, seed=42)
 
     # 加载共享权重
@@ -45,20 +51,20 @@ def run_pytorch_model(save_dir: str, error_injector: Optional = None, input_data
             json.dump(error_info.__dict__, f, indent=2, ensure_ascii=False)
 
     # 注册模块信息
-    register_torch_module(model)
+    torch_logger = TorchOperatorLogger()
+    register_torch_module(model, torch_logger)
 
     # 运行模型
     input_ids = torch.tensor(input_data, dtype=torch.long)
 
     # 清除已有日志
-    zwx_ms.mock.mock_torch.torch_logger.clear_logs()
 
     # 前向传播
     with torch.no_grad():
         outputs = model(input_ids)
 
     # 保存日志
-    zwx_ms.mock.mock_torch.torch_logger.dump_logs(torch_save_dir)
+    torch_logger.dump_logs(torch_save_dir)
 
     # 保存输入和输出
     np.save(os.path.join(save_dir, "torch_input.npy"), input_ids.numpy())

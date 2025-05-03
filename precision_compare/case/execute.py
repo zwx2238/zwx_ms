@@ -7,11 +7,11 @@ from typing import Dict, List
 
 import numpy as np
 
-from zwx_ms.analysis import analyze_runs
-from zwx_ms.mock.error import ErrorInjector
-from zwx_ms.case.execute_ms import run_mindspore_model
-from zwx_ms.case.execute_pt import run_pytorch_model
-from zwx_ms.utils import set_random_seed
+from precision_compare.analysis import analyze_runs
+from precision_compare.mock.error import ErrorInjector
+from precision_compare.case.execute_ms import run_mindspore_model
+from precision_compare.case.execute_pt import run_pytorch_model
+from precision_compare.utils import set_random_seed
 
 
 def run_test_case(test_dir: str, config: Dict) -> None:
@@ -32,7 +32,9 @@ def run_test_case(test_dir: str, config: Dict) -> None:
     # 获取错误注入配置
     error_type = config.get("error_type", "none")
     module_path = config.get("module_path", "")
-    framework = config.get("framework", "both")  # 选择注入错误的框架: torch, mindspore, both
+    framework = config.get(
+        "framework", "both"
+    )  # 选择注入错误的框架: torch, mindspore, both
 
     # 首先生成固定的输入数据，确保两个框架使用相同的输入
     print("生成统一输入数据...")
@@ -49,16 +51,26 @@ def run_test_case(test_dir: str, config: Dict) -> None:
         # 选择合适的错误注入方法
         if error_type == "weight_noise":
             scale = config.get("scale", 0.01)
-            torch_error_injector = lambda m: ErrorInjector.inject_weight_noise_torch(m, module_path, scale)
+            torch_error_injector = lambda m: ErrorInjector.inject_weight_noise_torch(
+                m, module_path, scale
+            )
         elif error_type == "dtype_cast":
             dtype = config.get("dtype", "float16")
-            torch_error_injector = lambda m: ErrorInjector.inject_dtype_cast_torch(m, module_path, dtype)
+            torch_error_injector = lambda m: ErrorInjector.inject_dtype_cast_torch(
+                m, module_path, dtype
+            )
         elif error_type == "activation_quantization":
             bits = config.get("bits", 4)
-            torch_error_injector = lambda m: ErrorInjector.inject_activation_quantization_torch(m, module_path, bits)
+            torch_error_injector = (
+                lambda m: ErrorInjector.inject_activation_quantization_torch(
+                    m, module_path, bits
+                )
+            )
 
     # 传递共享输入数据路径
-    torch_output = run_pytorch_model(test_dir, torch_error_injector, input_data=input_data)
+    torch_output = run_pytorch_model(
+        test_dir, torch_error_injector, input_data=input_data
+    )
 
     print("\n运行MindSpore模型...")
     ms_error_injector = None
@@ -66,21 +78,39 @@ def run_test_case(test_dir: str, config: Dict) -> None:
         # 选择合适的错误注入方法
         if error_type == "weight_noise":
             scale = config.get("scale", 0.01)
-            ms_error_injector = lambda m: ErrorInjector.inject_weight_noise_mindspore(m, module_path, scale)
+            ms_error_injector = lambda m: ErrorInjector.inject_weight_noise_mindspore(
+                m, module_path, scale
+            )
         elif error_type == "dtype_cast":
             dtype = config.get("dtype", "float16")
-            ms_error_injector = lambda m: ErrorInjector.inject_dtype_cast_mindspore(m, module_path, dtype)
+            ms_error_injector = lambda m: ErrorInjector.inject_dtype_cast_mindspore(
+                m, module_path, dtype
+            )
         elif error_type == "activation_quantization":
             bits = config.get("bits", 4)
-            ms_error_injector = lambda m: ErrorInjector.inject_activation_quantization_mindspore(m, module_path, bits)
+            ms_error_injector = (
+                lambda m: ErrorInjector.inject_activation_quantization_mindspore(
+                    m, module_path, bits
+                )
+            )
         elif error_type == "pynative_graph_switch":
-            ms_error_injector = lambda m: ErrorInjector.inject_pynative_graph_switch_mindspore(m, module_path)
+            ms_error_injector = (
+                lambda m: ErrorInjector.inject_pynative_graph_switch_mindspore(
+                    m, module_path
+                )
+            )
         elif error_type == "tensor_layout":
             layout = config.get("layout", "NCHW")
-            ms_error_injector = lambda m: ErrorInjector.inject_tensor_layout_mindspore(m, module_path, layout)
+            ms_error_injector = lambda m: ErrorInjector.inject_tensor_layout_mindspore(
+                m, module_path, layout
+            )
         elif error_type == "mixed_precision":
             enable = config.get("enable", True)
-            ms_error_injector = lambda m: ErrorInjector.inject_mixed_precision_mindspore(m, module_path, enable)
+            ms_error_injector = (
+                lambda m: ErrorInjector.inject_mixed_precision_mindspore(
+                    m, module_path, enable
+                )
+            )
 
     # 传递共享输入数据路径
     ms_output = run_mindspore_model(test_dir, ms_error_injector, input_data=input_data)
@@ -90,17 +120,25 @@ def run_test_case(test_dir: str, config: Dict) -> None:
     comparison = compare_outputs(torch_output, ms_output)
 
     # 保存比较结果
-    with open(os.path.join(test_dir, "comparison_results.json"), "w", encoding="utf-8") as f:
+    with open(
+        os.path.join(test_dir, "comparison_results.json"), "w", encoding="utf-8"
+    ) as f:
         json.dump(comparison, f, indent=2, ensure_ascii=False)
 
     # 打印主要差异指标
     print("\n===== 精度对比关键指标 =====")
     print(f"输入形状: {comparison.get('torch_shape')}")
-    print(f"PyTorch dtype: {comparison.get('torch_dtype')}, MindSpore dtype: {comparison.get('ms_dtype')}")
+    print(
+        f"PyTorch dtype: {comparison.get('torch_dtype')}, MindSpore dtype: {comparison.get('ms_dtype')}"
+    )
     print(f"最大绝对误差: {comparison.get('max_abs_diff'):.6e}")
     print(f"余弦相似度: {comparison.get('cosine_similarity'):.6f}")
-    print(f"最大误差位置 {comparison.get('max_diff_location')} 的相对误差: {comparison.get('rel_err_at_max_diff'):.6%}")
-    print(f"最大误差位置的值 - PyTorch: {comparison.get('torch_value_at_max'):.6f}, MindSpore: {comparison.get('ms_value_at_max'):.6f}")
+    print(
+        f"最大误差位置 {comparison.get('max_diff_location')} 的相对误差: {comparison.get('rel_err_at_max_diff'):.6%}"
+    )
+    print(
+        f"最大误差位置的值 - PyTorch: {comparison.get('torch_value_at_max'):.6f}, MindSpore: {comparison.get('ms_value_at_max'):.6f}"
+    )
     print("===========================")
 
     # 分析模型内部差异
@@ -109,20 +147,28 @@ def run_test_case(test_dir: str, config: Dict) -> None:
         result = analyze_runs(
             os.path.join(test_dir, "torch"),
             os.path.join(test_dir, "mindspore"),
-            os.path.join(test_dir, "analysis")
+            os.path.join(test_dir, "analysis"),
         )
 
         # 打印分析结果摘要
         print("\n===== 内部层分析摘要 =====")
-        if 'module_comparisons' in result:
-            modules = result['module_comparisons']
+        if "module_comparisons" in result:
+            modules = result["module_comparisons"]
             if modules:
-                max_diff_module = max(modules.items(), key=lambda x: x[1].get('max_abs_diff', 0))
-                print(f"最大差异模块: {max_diff_module[0]}, 绝对误差: {max_diff_module[1].get('max_abs_diff', 0):.6e}")
+                max_diff_module = max(
+                    modules.items(), key=lambda x: x[1].get("max_abs_diff", 0)
+                )
+                print(
+                    f"最大差异模块: {max_diff_module[0]}, 绝对误差: {max_diff_module[1].get('max_abs_diff', 0):.6e}"
+                )
 
                 # 输出余弦相似度最小的模块
-                min_cosine_module = min(modules.items(), key=lambda x: x[1].get('cosine_similarity', 1.0))
-                print(f"余弦相似度最低模块: {min_cosine_module[0]}, 相似度: {min_cosine_module[1].get('cosine_similarity', 0):.6f}")
+                min_cosine_module = min(
+                    modules.items(), key=lambda x: x[1].get("cosine_similarity", 1.0)
+                )
+                print(
+                    f"余弦相似度最低模块: {min_cosine_module[0]}, 相似度: {min_cosine_module[1].get('cosine_similarity', 0):.6f}"
+                )
             else:
                 print("未找到模块比较结果")
         else:
@@ -133,6 +179,7 @@ def run_test_case(test_dir: str, config: Dict) -> None:
     except Exception as e:
         print(f"分析过程出错: {str(e)}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -143,13 +190,15 @@ def run_parallel_tests(test_configs: List[Dict]) -> None:
     # 创建测试用例目录
     test_cases = []
     for idx, config in enumerate(test_configs):
-        case_name = f"case{idx+1}"
+        case_name = f"case{idx + 1}"
         test_dir = create_test_case(case_name, config)
         test_cases.append((test_dir, config))
         print(f"创建测试用例: {Path(test_dir).name}")
 
     # 使用进程池并行执行测试
-    with ProcessPoolExecutor(max_workers=min(len(test_cases), os.cpu_count() or 1)) as executor:
+    with ProcessPoolExecutor(
+        max_workers=min(len(test_cases), os.cpu_count() or 1)
+    ) as executor:
         # 提交所有测试任务
         futures = []
         for test_dir, config in test_cases:
@@ -161,7 +210,9 @@ def run_parallel_tests(test_configs: List[Dict]) -> None:
             try:
                 future.result()
             except Exception as e:
-                print(f"测试执行错误: {str(e)}")
+                import traceback
+
+                traceback.print_exc()
 
     print("\n所有测试完成!")
 
@@ -208,7 +259,7 @@ def compare_outputs(torch_output: np.ndarray, ms_output: np.ndarray) -> Dict:
             "torch_shape": torch_shape,
             "ms_shape": ms_shape,
             "torch_dtype": torch_dtype,
-            "ms_dtype": ms_dtype
+            "ms_dtype": ms_dtype,
         }
 
     # 计算差异
@@ -223,7 +274,9 @@ def compare_outputs(torch_output: np.ndarray, ms_output: np.ndarray) -> Dict:
     ms_value = float(ms_output[max_idx])
 
     # 3. 最大差异位置的相对误差
-    rel_err_at_max = float(diff[max_idx] / (max(abs(torch_value), abs(ms_value)) + 1e-10))
+    rel_err_at_max = float(
+        diff[max_idx] / (max(abs(torch_value), abs(ms_value)) + 1e-10)
+    )
 
     # 4. 余弦相似度
     # 将数组展平以计算余弦相似度
@@ -232,8 +285,8 @@ def compare_outputs(torch_output: np.ndarray, ms_output: np.ndarray) -> Dict:
 
     # 计算余弦相似度 = (a·b) / (||a|| * ||b||)
     dot_product = np.sum(torch_flat * ms_flat)
-    torch_norm = np.sqrt(np.sum(torch_flat ** 2))
-    ms_norm = np.sqrt(np.sum(ms_flat ** 2))
+    torch_norm = np.sqrt(np.sum(torch_flat**2))
+    ms_norm = np.sqrt(np.sum(ms_flat**2))
 
     cosine_similarity = float(dot_product / (torch_norm * ms_norm + 1e-10))
 
@@ -244,14 +297,12 @@ def compare_outputs(torch_output: np.ndarray, ms_output: np.ndarray) -> Dict:
         "ms_shape": ms_shape,
         "torch_dtype": torch_dtype,
         "ms_dtype": ms_dtype,
-
         # 关键指标
         "max_abs_diff": max_diff,
         "cosine_similarity": cosine_similarity,
         "rel_err_at_max_diff": rel_err_at_max,
-
         # 最大差异的位置信息
         "max_diff_location": [int(i) for i in max_idx],
         "torch_value_at_max": torch_value,
-        "ms_value_at_max": ms_value
+        "ms_value_at_max": ms_value,
     }

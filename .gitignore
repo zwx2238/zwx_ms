@@ -5,3 +5,4 @@ test_cases/
 .venv
 weights/
 test_case*
+rank_*

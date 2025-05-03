@@ -9,6 +9,7 @@ import torch
 @dataclass
 class InjectedError:
     """注入错误的信息"""
+
     module_path: str
     error_type: str
     description: str
@@ -21,10 +22,12 @@ class ErrorInjector:
     """错误注入器，支持PyTorch和MindSpore"""
 
     @staticmethod
-    def inject_weight_noise_torch(model, module_path: str, scale: float = 0.01) -> InjectedError:
+    def inject_weight_noise_torch(
+        model, module_path: str, scale: float = 0.01
+    ) -> InjectedError:
         """为PyTorch模型注入权重噪声"""
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         with torch.no_grad():
@@ -39,14 +42,16 @@ class ErrorInjector:
             description=f"在{module_path}中注入了{scale}比例的高斯噪声",
             framework="torch",
             expected_impact="权重扰动导致输出偏差",
-            params={"scale": scale}
+            params={"scale": scale},
         )
 
     @staticmethod
-    def inject_weight_noise_mindspore(model, module_path: str, scale: float = 0.01) -> InjectedError:
+    def inject_weight_noise_mindspore(
+        model, module_path: str, scale: float = 0.01
+    ) -> InjectedError:
         """为MindSpore模型注入权重噪声"""
         module = model
-        path_parts = module_path.split('.')
+        path_parts = module_path.split(".")
 
         # 遍历路径获取模块
         for part in path_parts:
@@ -62,10 +67,14 @@ class ErrorInjector:
                 new_data = param_data + noise
 
                 # 更新参数
-                new_param = ms.Parameter(ms.Tensor(new_data, param.data.dtype), name=param_name)
+                new_param = ms.Parameter(
+                    ms.Tensor(new_data, param.data.dtype), name=param_name
+                )
                 module._params[param_name] = new_param
                 setattr(module, param_name, new_param)
-                print(f"MindSpore: 在{module_path}.{param_name}中注入了{scale}比例的噪声")
+                print(
+                    f"MindSpore: 在{module_path}.{param_name}中注入了{scale}比例的噪声"
+                )
 
         return InjectedError(
             module_path=module_path,
@@ -73,14 +82,16 @@ class ErrorInjector:
             description=f"在{module_path}中注入了{scale}比例的高斯噪声",
             framework="mindspore",
             expected_impact="权重扰动导致输出偏差",
-            params={"scale": scale}
+            params={"scale": scale},
         )
 
     @staticmethod
-    def inject_dtype_cast_torch(model, module_path: str, dtype: str = "float16") -> InjectedError:
+    def inject_dtype_cast_torch(
+        model, module_path: str, dtype: str = "float16"
+    ) -> InjectedError:
         """为PyTorch模型注入数据类型转换"""
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         # 获取对应的torch dtype
@@ -106,14 +117,16 @@ class ErrorInjector:
             description=f"在{module_path}中注入了到{dtype}的类型转换",
             framework="torch",
             expected_impact="数据类型转换导致精度损失",
-            params={"dtype": dtype}
+            params={"dtype": dtype},
         )
 
     @staticmethod
-    def inject_dtype_cast_mindspore(model, module_path: str, dtype: str = "float16") -> InjectedError:
+    def inject_dtype_cast_mindspore(
+        model, module_path: str, dtype: str = "float16"
+    ) -> InjectedError:
         """为MindSpore模型注入数据类型转换"""
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         # 获取对应的mindspore dtype
@@ -121,7 +134,7 @@ class ErrorInjector:
             "float16": ms.float16,
             "float32": ms.float32,
             "int8": ms.int8,
-            "int32": ms.int32
+            "int32": ms.int32,
         }
         ms_dtype = ms_dtype_map.get(dtype, ms.float16)
 
@@ -145,14 +158,16 @@ class ErrorInjector:
             description=f"在{module_path}中注入了到{dtype}的类型转换",
             framework="mindspore",
             expected_impact="数据类型转换导致精度损失",
-            params={"dtype": dtype}
+            params={"dtype": dtype},
         )
 
     @staticmethod
-    def inject_activation_quantization_torch(model, module_path: str, bits: int = 4) -> InjectedError:
+    def inject_activation_quantization_torch(
+        model, module_path: str, bits: int = 4
+    ) -> InjectedError:
         """为PyTorch模型注入激活量化"""
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         def quantize(x: torch.Tensor, bits: int) -> torch.Tensor:
@@ -180,18 +195,20 @@ class ErrorInjector:
             description=f"在{module_path}中注入了{bits}比特的激活量化",
             framework="torch",
             expected_impact="激活值量化导致精度损失",
-            params={"bits": bits}
+            params={"bits": bits},
         )
 
     @staticmethod
-    def inject_activation_quantization_mindspore(model, module_path: str, bits: int = 4) -> InjectedError:
+    def inject_activation_quantization_mindspore(
+        model, module_path: str, bits: int = 4
+    ) -> InjectedError:
         """为MindSpore模型注入激活量化"""
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         def quantize(x: ms.Tensor, bits: int) -> ms.Tensor:
-            max_val = ms.ops.maximum(ms.ops.abs(x))
+            max_val, _ = ms.ops.max(ms.ops.abs(x))
             scale = (2 ** (bits - 1) - 1) / (max_val + 1e-10)
             return ms.ops.round(x * scale) / scale
 
@@ -215,16 +232,18 @@ class ErrorInjector:
             description=f"在{module_path}中注入了{bits}比特的激活量化",
             framework="mindspore",
             expected_impact="激活值量化导致精度损失",
-            params={"bits": bits}
+            params={"bits": bits},
         )
 
     @staticmethod
-    def inject_pynative_graph_switch_mindspore(model, module_path: str) -> InjectedError:
+    def inject_pynative_graph_switch_mindspore(
+        model, module_path: str
+    ) -> InjectedError:
         """为MindSpore模型注入PyNative/Graph模式切换错误
         这会模拟在模型部分组件上使用不同的执行模式可能导致的精度问题
         """
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         # 保存原始construct方法
@@ -259,14 +278,16 @@ class ErrorInjector:
             description=f"在{module_path}中注入了PyNative/Graph模式切换",
             framework="mindspore",
             expected_impact="执行模式切换导致的精度差异",
-            params={}
+            params={},
         )
 
     @staticmethod
-    def inject_tensor_layout_mindspore(model, module_path: str, layout: str = "NCHW") -> InjectedError:
+    def inject_tensor_layout_mindspore(
+        model, module_path: str, layout: str = "NCHW"
+    ) -> InjectedError:
         """为MindSpore模型注入张量布局转换错误"""
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         # 保存原始construct方法
@@ -310,14 +331,16 @@ class ErrorInjector:
             description=f"在{module_path}中注入了{layout}布局转换",
             framework="mindspore",
             expected_impact="布局转换导致的精度损失",
-            params={"layout": layout}
+            params={"layout": layout},
         )
 
     @staticmethod
-    def inject_mixed_precision_mindspore(model, module_path: str, enable: bool = True) -> InjectedError:
+    def inject_mixed_precision_mindspore(
+        model, module_path: str, enable: bool = True
+    ) -> InjectedError:
         """为MindSpore模型注入混合精度训练"""
         module = model
-        for part in module_path.split('.'):
+        for part in module_path.split("."):
             module = getattr(module, part)
 
         # 保存原始construct方法
@@ -345,5 +368,5 @@ class ErrorInjector:
             description=f"在{module_path}中注入了混合精度模拟",
             framework="mindspore",
             expected_impact="混合精度计算导致的精度损失",
-            params={"enable": enable}
+            params={"enable": enable},
         )

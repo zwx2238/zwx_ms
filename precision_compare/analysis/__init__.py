@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import Dict, Any
 
-from zwx_ms.analysis.analyzer import ModelAnalyzer
-from zwx_ms.analysis.reporter import AnalysisReport
+from precision_compare.analysis.analyzer import ModelAnalyzer
+from precision_compare.analysis.reporter import AnalysisReport
 
 
 def analyze_runs(base_dir: str, ref_dir: str, output_dir: str = None) -> Dict[str, Any]:
@@ -61,10 +61,7 @@ def analyze_runs(base_dir: str, ref_dir: str, output_dir: str = None) -> Dict[st
     print("分析完成!")
 
     # 准备返回结果
-    result = {
-        "module_comparisons": {},
-        "problematic_ops": problematic_ops
-    }
+    result = {"module_comparisons": {}, "problematic_ops": problematic_ops}
 
     # 将差异数据转换为字典格式
     for diff in diffs:
@@ -72,7 +69,7 @@ def analyze_runs(base_dir: str, ref_dir: str, output_dir: str = None) -> Dict[st
             result["module_comparisons"][diff.module_name] = {
                 "max_abs_diff": diff.max_abs_diff,
                 "cosine_similarity": diff.cosine_similarity,
-                "shape": diff.shape
+                "shape": diff.shape,
             }
 
     return result

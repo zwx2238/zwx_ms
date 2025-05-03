@@ -4,6 +4,7 @@ from typing import Tuple
 
 @dataclass
 class TensorDiff:
+    # TODO 调整顺序，减少调用位置
     module_name: str
     tensor_type: str  # 'inputs', 'outputs', 或 'parameters'
     max_abs_diff: float

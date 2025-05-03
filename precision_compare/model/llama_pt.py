@@ -1,11 +1,10 @@
-import os
-
 import torch
 from torch import nn as nn
 from torch.nn import functional as F
 
-from zwx_ms.mock.mock_torch import register_module_info_pt, torch_logger
-from zwx_ms.utils.weight_utils import WeightManager
+from precision_compare.model.config import get_llama_config
+from precision_compare.model.model import create_test_model
+from precision_compare.utils.weight_utils import WeightManager
 
 
 class LlamaAttention(nn.Module):
@@ -24,17 +23,35 @@ class LlamaAttention(nn.Module):
         batch_size, seq_len, _ = hidden_states.shape
 
         # 投影查询、键、值
-        q = self.q_proj(hidden_states).view(batch_size, seq_len, self.num_attention_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(hidden_states).view(batch_size, seq_len, self.num_attention_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(hidden_states).view(batch_size, seq_len, self.num_attention_heads, self.head_dim).transpose(1, 2)
+        q = (
+            self.q_proj(hidden_states)
+            .view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        k = (
+            self.k_proj(hidden_states)
+            .view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        v = (
+            self.v_proj(hidden_states)
+            .view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+            .transpose(1, 2)
+        )
 
         # 注意力计算
-        scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.head_dim, dtype=q.dtype))
+        scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(
+            torch.tensor(self.head_dim, dtype=q.dtype)
+        )
         attn_weights = F.softmax(scores, dim=-1)
 
         # 应用注意力权重
         output = torch.matmul(attn_weights, v)
-        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.hidden_size)
+        output = (
+            output.transpose(1, 2)
+            .contiguous()
+            .view(batch_size, seq_len, self.hidden_size)
+        )
         output = self.o_proj(output)
 
         return output
@@ -65,8 +82,12 @@ class LlamaDecoderLayer(nn.Module):
 
         self.self_attn = LlamaAttention(config)
         self.mlp = LlamaMLP(config)
-        self.input_layernorm = nn.LayerNorm(self.hidden_size, eps=config["layer_norm_eps"])
-        self.post_attention_layernorm = nn.LayerNorm(self.hidden_size, eps=config["layer_norm_eps"])
+        self.input_layernorm = nn.LayerNorm(
+            self.hidden_size, eps=config["layer_norm_eps"]
+        )
+        self.post_attention_layernorm = nn.LayerNorm(
+            self.hidden_size, eps=config["layer_norm_eps"]
+        )
 
     def forward(self, hidden_states):
         residual = hidden_states
@@ -90,7 +111,9 @@ class LlamaModel(nn.Module):
         self.config = config
         self.embed_tokens = nn.Embedding(config["vocab_size"], config["hidden_size"])
 
-        self.layers = nn.ModuleList([LlamaDecoderLayer(config) for _ in range(config["num_hidden_layers"])])
+        self.layers = nn.ModuleList(
+            [LlamaDecoderLayer(config) for _ in range(config["num_hidden_layers"])]
+        )
         self.norm = nn.LayerNorm(config["hidden_size"], eps=config["layer_norm_eps"])
 
     def forward(self, input_ids):
@@ -108,7 +131,9 @@ class LlamaForCausalLM(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.model = LlamaModel(config)
-        self.lm_head = nn.Linear(config["hidden_size"], config["vocab_size"], bias=False)
+        self.lm_head = nn.Linear(
+            config["hidden_size"], config["vocab_size"], bias=False
+        )
 
     def forward(self, input_ids):
         hidden_states = self.model(input_ids)
@@ -130,73 +155,13 @@ class LlamaForCausalLM(nn.Module):
         return missing_keys
 
 
-def get_llama_config(small=True):
-    """获取Llama模型配置"""
-    if small:
-        return {
-            "vocab_size": 32000,
-            "hidden_size": 768,
-            "intermediate_size": 3072,
-            "num_hidden_layers": 2,
-            "num_attention_heads": 12,
-            "layer_norm_eps": 1e-5,
-        }
-    else:
-        return {
-            "vocab_size": 32000,
-            "hidden_size": 4096,
-            "intermediate_size": 11008,
-            "num_hidden_layers": 32,
-            "num_attention_heads": 32,
-            "layer_norm_eps": 1e-5,
-        }
-
-
-def create_test_model():
-    """创建测试模型"""
-    config = get_llama_config(small=True)
-    model = LlamaForCausalLM(config)
-    return model
-
-
-def test_model_dump():
-    """测试模型导出和记录"""
-    # 创建模型
-    model = create_test_model()
-
-    # 注册模块信息
-    register_module_info_pt(model)
-
-    # 测试输入
-    batch_size = 1
-    seq_len = 32
-    input_ids = torch.randint(0, 32000, (batch_size, seq_len))
-
-    # 清除日志记录
-    torch_logger.clear_logs()
-
-    # 前向传播
-    with torch.no_grad():
-        output = model(input_ids)
-
-    # 保存日志
-    torch_logger.dump_logs("torch_dump_logs")
-
-    print(f"测试日志保存到 'torch_dump_logs' 目录")
-
-    return output
-
-
 def save_model_weights(model, output_path: str):
     """保存模型权重为safetensors格式"""
     # 获取权重
     state_dict = model.state_dict()
 
     # 使用WeightManager保存
-    WeightManager.generate_shared_weights(
-        get_llama_config(small=True),
-        output_path
-    )
+    WeightManager.generate_shared_weights(get_llama_config(small=True), output_path)
 
     print(f"模型权重保存到: {output_path}")
 
@@ -204,7 +169,7 @@ def save_model_weights(model, output_path: str):
 def load_model_with_weights(weights_path: str):
     """创建模型并加载权重"""
     # 创建模型
-    model = create_test_model()
+    model = create_test_model(LlamaForCausalLM)
 
     # 加载权重
     model.load_weights(weights_path)
