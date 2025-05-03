@@ -124,13 +124,15 @@ class AnalysisReport:
 
         # 创建最大绝对误差的热力图
         df1 = pd.DataFrame(max_abs_diffs, index=module_names, columns=["最大绝对误差"])
+        # 设置绝对误差的阈值为0.1
+        norm1 = plt.Normalize(vmin=0, vmax=0.1)
         sns.heatmap(
             df1,
             annot=True,
             fmt=".2e",
-            cmap="Reds",  # 使用红色表示差异大
+            cmap="Reds",
             cbar_kws={"label": "最大绝对误差"},
-            robust=True,
+            norm=norm1,
             ax=ax1,
         )
         ax1.set_title("最大绝对误差热力图")
@@ -139,13 +141,15 @@ class AnalysisReport:
 
         # 创建最大相对误差的热力图
         df2 = pd.DataFrame(max_rel_diffs, index=module_names, columns=["最大相对误差"])
+        # 设置相对误差的阈值为0.01 (1%)
+        norm2 = plt.Normalize(vmin=0, vmax=0.01)
         sns.heatmap(
             df2,
             annot=True,
-            fmt=".2%",  # 用百分比格式显示相对误差
-            cmap="Oranges",  # 使用橙色表示差异大
+            fmt=".2%",
+            cmap="Oranges",
             cbar_kws={"label": "最大相对误差"},
-            robust=True,
+            norm=norm2,
             ax=ax2,
         )
         ax2.set_title("最大相对误差热力图")
@@ -154,13 +158,15 @@ class AnalysisReport:
 
         # 创建余弦相似度的热力图
         df3 = pd.DataFrame(cosine_diffs, index=module_names, columns=["余弦相似度"])
+        # 设置余弦相似度的阈值范围为0.999-1.0
+        norm3 = plt.Normalize(vmin=0.999, vmax=1.0)
         sns.heatmap(
             df3,
             annot=True,
-            fmt=".4f",  # 余弦相似度通常是0-1之间的值，使用小数点格式
-            cmap="Blues_r",  # 反转的蓝色图，相似度低的颜色更深
+            fmt=".4f",
+            cmap="Blues_r",
             cbar_kws={"label": "余弦相似度"},
-            robust=True,
+            norm=norm3,
             ax=ax3,
         )
         ax3.set_title("余弦相似度热力图")
